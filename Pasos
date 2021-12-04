@@ -1,0 +1,43 @@
+Pasos para cargar una lista de información en un RecyclerView desde una API Rest
+
+* Configurar el Gradle para que soporte Java 11
+    -> Preferencias->Build, Execution, Deployment->Build Tools->Gradle->Cambiar a JDK 11
+* Tener un Activity Main
+    -> Creamos un Activity Main desde la galeria de Actividades, importante selecciona Launcher Main
+* Crear el Fragmento
+    -> Crear carpeta "ui"
+    -> Crear fragmento en blanco llamdo "IndicadoresFragment"
+    -> Limpiamos el fragmento
+    -> Dibujamos el layout del fragmento agregando TextViews(version, autor y fecha) y RecyclerView
+    -> Implementar ViewBinding del Fragmento Indicadores (agregarlo al build.gradle si no esta)
+    -> Configurar RecyclerView con ViewBinding
+* Crear ViewHolder
+    -> Crear el item_indicadores en la carpeta Layout
+    -> Crear modelo Indicador para el item
+        -> Agregar retrofit y gson en build.gradle
+        -> Crear carpeta "data" y dentro crear carpeta "model"
+        -> Crear data class que represente el Item indicador
+    -> Dentro de la carpeta ui, crear la clase IndicadoresViewHolder y heredar de RecyclerView.ViewHolder
+    -> Configurar ViewHolder (Constructor Primario)
+    -> Crear funcion bind y pasar una referencia de Indicador
+    -> Cargar los datos del Binding con la información del Indicador
+* Crear Adapter
+    -> Dentro de la carpeta ui, crear la clase IndicadoresAdapter y heredar de RecyclerView.Adapter<IndicadoresViewHolder>
+    -> Implemetar los metodos, crearViewHolder, bindViewHolder y getItemCount
+    -> Agregar listado de indicadores dentro del constructor primario
+    -> Modificar funcion getItemCount referenciando el size del list del constructor primario (utilizar inferencia en el método)
+    -> Modificar funcion crearViewHolder, creando un objeto de IndicadoresViewHolder con su ItemIndicadoresBinding
+    -> Modificar funcion bindViewHolder, llamando al bind correspondiente ref:( holder.bind(indicadores[position]) )
+* Crear ViewModel
+    -> Agregar referencia a LiveCycle en el gradle de app (Navigation Fragment lo trae de regalo) implementation 'androidx.navigation:navigation-fragment-ktx:2.3.5'
+    -> Crear carpeta "presentation"
+    -> Crear clase IndicadoresViewState para representar los posibles estados de la vista
+    -> Crear clase IndicadoresViewModel y heredar de ViewModel
+    -> Crear mutableLiveData de tipo IndicadoresViewState para nuestro ViewModel
+    -> Crear funcion state() que exponga un LiveData para ser observado
+    -> Crear funcion obtenerIndicadores que implemente un viewModelScope.launch (Coroutines)
+* Crear Clases de Retrofit para conectarse a la API (Api Service)
+* Crear el Repositorio (Solo soporta Api, pero agregaremos un Dao de Room)
+* Crear Data Class para representar la respuesta de la API (json -> clases Serialización)
+* Crear el ViewModelFactory pasandole el repositorio para crear ViewModel
+* Instanciar el ViewModel desde el Fragmento
