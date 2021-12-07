@@ -7,6 +7,6 @@ data class Indicador(
     val nombre: String,
     @SerializedName("unidad_medida")
     val unidadMedida: String,
-    val fecha: String,
+    var fecha: String,
     val valor: String
 )

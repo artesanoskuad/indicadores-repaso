@@ -28,16 +28,284 @@ Pasos para cargar una lista de información en un RecyclerView desde una API Res
     -> Modificar funcion getItemCount referenciando el size del list del constructor primario (utilizar inferencia en el método)
     -> Modificar funcion crearViewHolder, creando un objeto de IndicadoresViewHolder con su ItemIndicadoresBinding
     -> Modificar funcion bindViewHolder, llamando al bind correspondiente ref:( holder.bind(indicadores[position]) )
+* Crear el Repositorio (Solo soporta Api, pero agregaremos un Dao de Room)
+    -> Dentro de la carpeta "data->model" creamos un Data class llamado Indicadores
+    -> Analizamos el Json de la ApiRest y declaramos los atributos en base a ese Json (Serialización)
+    -> Dentro de la carpeta "data" crear clase IndicadoresRepository
+    -> Creamos la carpeta remote
+    -> Dentro de la carpeta remote, creamos la interfaz IndicadoresApi
+    -> Dentro de la interfaz IndicadoresApi, crear la función obtenerIndicadores(), esta funcion debe ser suspendida,
+    debe retornar un Response<Indicadores> y se debe agregar la notación @GET("api") sobre la declaración de la función.
+    -> Dentro de la carpeta "data->remote" crear un clase tipo Object llamada RetrofitClient
+    -> Dentro de la clase RemoteClient, agregar una constante privada tipo String llamada BASE_URL,
+    esta constante debe contener la URL de la Api Rest "https://mindicador.cl/"
+    -> Dentro de la clase RemoteClient, agregar una funcion llamada crearApiIndicadores(),
+    esta función debe retornar un objeto de tipo "IndicadoresApi" (Interfaz de Retrofit)
+        fun crearApiIndicadores() : IndicadoresApi{
+            val retrofit = Retrofit.Builder()
+                .baseUrl(URL_BASE)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+            return retrofit.create(IndicadoresApi::class.java)
+        }
+    -> Dentro de la clase IndicadoresRepository, agregar el constructor primario, junto con una
+    variable de tipo indicadoresApi.
+    -> Dentro de la clase IndicadoresRepository, agregar una funcion llamada "obtenerIndicadores()",
+    esta función es suspendida y debe retornar un objeto de tipo "Indicadores" que admita valores nulos.
+    -> Dentro de la funcion obtenerIndicadores, agregar una validación que determine si es una
+    respuesta exitosa y devolver el body de la respuesta, caso contrario lanzar un error.
+        suspend fun getAllIndicadores(): Indicadores? {
+            val indicadores = api.obtenerIndicadores()
+            if(indicadores.isSuccessful){
+                return indicadores.body()
+            } else {
+                throw RuntimeException("No se obtuvieron indicadores")
+            }
+        }
+
 * Crear ViewModel
     -> Agregar referencia a LiveCycle en el gradle de app (Navigation Fragment lo trae de regalo) implementation 'androidx.navigation:navigation-fragment-ktx:2.3.5'
     -> Crear carpeta "presentation"
-    -> Crear clase IndicadoresViewState para representar los posibles estados de la vista
+    -> Crear clase sellada llamada IndicadoresViewState para representar los posibles estados de la vista
+        -> Crear dentro de la clase IndicadoresViewState el estado NoSeObtieneRespuestaViewState para las respuesta null
+        -> Crear dentro de la clase IndicadoresViewState el estado MostrarIndicadoresViewState para las respuestas exitosas.
+        sealed class IndicadoresViewState{
+            object NoSeObtieneRespuestaViewState : IndicadoresViewState()
+            data class MostrarIndicadoresViewState(
+                val version: String,
+                val author: String,
+                val fecha: String,
+                val indicadores: List<Indicador>
+            ) : IndicadoresViewState()
+        }
     -> Crear clase IndicadoresViewModel y heredar de ViewModel
+    -> Agregar al IndicadoresViewModel el constructor primario, junto con atributo de tipo IndicadoresRepository
     -> Crear mutableLiveData de tipo IndicadoresViewState para nuestro ViewModel
     -> Crear funcion state() que exponga un LiveData para ser observado
     -> Crear funcion obtenerIndicadores que implemente un viewModelScope.launch (Coroutines)
-* Crear Clases de Retrofit para conectarse a la API (Api Service)
-* Crear el Repositorio (Solo soporta Api, pero agregaremos un Dao de Room)
-* Crear Data Class para representar la respuesta de la API (json -> clases Serialización)
+    -> Dentro de la función viewModelScope.launch, llamar al repositorio.obtenerIndicadores() y
+    almacenar la respuesta en una variable auxiliar de la función.
+    -> Crear la funcion llamada handleState que reciba la variable auxiliar de la respuesta al
+    Repositorio
+    -> Debemos crear una funcion que tome los 9 indicadores y los transforme en una lista para poder ser mostrados
+    en un RecyclerView
+        private fun getListIndicadores(indicadores: Indicadores): List<Indicador> {
+                            with(indicadores) {
+                                return listOf(
+                                    uf,
+                                    ivp,
+                                    dolar,
+                                    dolarIntercambio,
+                                    euro,
+                                    ipc,
+                                    utm,
+                                    imacec,
+                                    tpm,
+                                    libraCobre,
+                                    tasaDesempleo,
+                                    bitcoin
+                                )
+                            }
+                        }
+    -> Dentro de la función handleState, debemos validar si la respuesta es null
+    -> Si la respuesta del repositorio es null, debemos indicar al mutableLiveData el estado de NoSeObtieneRespuestaViewState
+    -> Si la respuesta del repositorio es un objeto Indicadores, debemos indicar al mutableLiveData el estado de MostrarIndicadoresViewState,
+    junto con pasar toda la información correspondiente.
+        private fun handleState(indicadores: Indicadores?) {
+            if (indicadores != null) {
+                mutableLiveData.postValue(
+                    MostrarIndicadoresViewState(
+                        indicadores.version,
+                        indicadores.autor,
+                        indicadores.fecha.substring(0, 10),
+                        getListIndicadores(indicadores)
+                    )
+                )
+            } else {
+                mutableLiveData.postValue(NoSeObtieneRespuestaViewState)
+            }
+        }
+    -> Crear una funcion llamada formatear fecha, actortando la fecha tipo string
+    a solo 10 caracteres, quedando de la siguiente forma
+        private fun formatearFecha(fecha: String) = fecha.substring(0,10)
+    -> Crear una funcion llamada getIndicadorFechaFormateada que reciba un indicador
+    y que este devuelva un indicador nuevo, con la fecha formateada.
+        private fun getIndicadorFechaFormateada(indicador: Indicador): Indicador {
+                with(indicador) {
+                    return Indicador(
+                        codigo,
+                        nombre,
+                        unidadMedida,
+                        formatearFecha(fecha),
+                        valor
+                    )
+                }
+            }
+    -> Modificar la funcion getListIndicadores utilizando la expresión "map" para
+    modificar cada elemento de la lista de indicadores.
+        private fun getListIndicadores(indicadores: Indicadores): List<Indicador> {
+            with(indicadores) {
+                return listOf(
+                    uf,
+                    ivp,
+                    dolar,
+                    dolarIntercambio,
+                    euro,
+                    ipc,
+                    utm,
+                    imacec,
+                    tpm,
+                    libraCobre,
+                    tasaDesempleo,
+                    bitcoin
+                ).map { indicador ->
+                    getIndicadorFechaFormateada(indicador)
+                }
+            }
+        }
 * Crear el ViewModelFactory pasandole el repositorio para crear ViewModel
+    -> Dentro de la carpeta "presentation" crear una clase llamada IndicadoresViewModelFactory,
+    esta clase debe implementar una interfaz ViewModelProvider.Factory
+    -> Agregar constructor primario a clase IndicadoresViewModelFactory junto con un
+    atributo de tipo IndicadoresRepository
+    -> Implementar funcion onCreate de la interfaz ViewModelProvider.Factory
+        override fun <T : ViewModel?> create(modelClass: Class<T>): T {
+            if (modelClass.isAssignableFrom(IndicadoresViewModel::class.java)) {
+                return IndicadoresViewModel(repository) as T
+            }
+            throw IllegalArgumentException("Unknow ViewModel class")
+        }
+
 * Instanciar el ViewModel desde el Fragmento
+    -> Dentro de la clase IndicadoresFragment, declarar los siguientes atributos:
+        -> indicadoresApi : IndicadoresApi para consultar a la Api Rest por medio de las clases Retrofit
+            private val indicadoresApi = RetrofitClient.crearApiIndicadores()
+        -> indicadoresRepository: IndicadoresRepository para que nuestro viewModel pueda ser construido
+        por nuestro ViewModelFactory
+            private val repository = IndicadoresRepository(indicadoresApi)
+        -> indicadoresViewModelFactory: IndicadoresViewModelFactory, permite crear un objeto de tipo
+        viewModelFactory que permite crear el viewModel
+            private val indicadoresViewModelFactory = IndicadoresViewModelFactory(repository)
+        -> indicadoresViewModel: IndicadoresViewModel, permite crear el viewModel para nuestro
+        fragmeto
+            private val indicadoresViewModel: IndicadoresViewModel by activityViewModels {
+                indicadoresViewModelFactory
+            }
+    -> Crear la función llamada setupRecyclerView para agregar el LayoutManager al RecyclerView
+        private fun setupRecyclerView() {
+            binding.rvIndicadores.layoutManager = LinearLayoutManager(context)
+        }
+    -> Crear la funcion llamada muestraVentanaSinRespuesta() que permitirá avisar al usuario
+    que la app no pudo obtener una respuesta del servidor (respuesta == null) , para este ejemplo
+    mostraremos solamente un Toast, que indique que no hay respuesta.
+            private fun muestraVentanaSinRespuesta() {
+                Toast.makeText(context, "No se obtiene respuesta del servidor", Toast.LENGTH_SHORT).show()
+            }
+    -> Crear la funcion llamada muestraIndicadores que reciba por parametro los siguientes atributos:
+        -> author: String
+        -> fecha: String
+        -> version: String
+        -> indicadores: List<Indicador>
+            private fun muestraIndicadores(
+                author: String,
+                fecha: String,
+                version: String,
+                indicadores: List<Indicador>
+            ) {
+                with(binding){
+                    tvAuthor.text = author
+                    tvFecha.text = fecha
+                    tvVersion.text = version
+                    rvIndicadores.adapter = IndicadoresAdapter(indicadores)
+                }
+            }
+    -> Crear la función llamada handleUI que reciba por parametro un IndicadoresViewState
+        -> Si el indicador por parametro es de tipo NoSeObtieneRespuestaViewState, se debe llamar
+        a la función muestraVentanaSinRespuesta()
+        -> Si el indicador por parametro es de tipo MostrarIndicadoresViewState, se debe llamar
+        a la funcion muestraIndicadores, pasandole todos los valores del estado
+            private fun handleUI(state: IndicadoresViewState){
+                when(state){
+                    is NoSeObtieneRespuestaViewState -> muestraVentanaSinRespuesta()
+                    is MostrarIndicadoresViewState -> muestraIndicadores(
+                        state.author,
+                        state.fecha,
+                        state.version,
+                        state.indicadores
+                    )
+                }
+            }
+    -> Crear la función llamada setupViewModel() observando el estado del ViewModel y
+    llamado a la función handleUI para cada cambio de estado.
+        private fun setupViewModel() {
+            indicadoresViewModel.state().observe(viewLifecycleOwner) {
+                it?.let { safeState ->
+                    handleUI(safeState)
+                }
+            }
+        }
+    -> Dentro de la función setupViewModel, llamar a la función obtenerIndicadores del viewModel
+        private fun setupViewModel() {
+            indicadoresViewModel.state().observe(viewLifecycleOwner) {
+                it?.let { safeState ->
+                    handleUI(safeState)
+                }
+            }
+            indicadoresViewModel.obtenerIndicadores()
+        }
+    -> Dentro de la función "onViewCreated" llamar a la funcion
+        -> setupRecyclerView
+        -> setupViewModel
+            override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+                super.onViewCreated(view, savedInstanceState)
+                setupRecyclerView()
+                setupViewModel()
+            }
+* Agregar FragmentContainView dentro del layout del activity main
+    <?xml version="1.0" encoding="utf-8"?>
+    <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        xmlns:tools="http://schemas.android.com/tools"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        tools:context=".MainActivity">
+
+        <androidx.fragment.app.FragmentContainerView
+            android:id="@+id/content"
+            android:name="com.artesanoskuad.indicadoresrepaso.ui.IndicadoresFragment"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+* Agregar permiso de internet en el archivo AndroidManifest.xml
+    <?xml version="1.0" encoding="utf-8"?>
+    <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+        package="com.artesanoskuad.indicadoresrepaso">
+
+        <uses-permission android:name="android.permission.INTERNET" />
+
+        <application
+            android:allowBackup="false"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:supportsRtl="true"
+            android:theme="@style/Theme.IndicadoresRepaso">
+            <activity
+                android:name=".MainActivity"
+                android:exported="true">
+                <intent-filter>
+                    <action android:name="android.intent.action.MAIN" />
+
+                    <category android:name="android.intent.category.LAUNCHER" />
+                </intent-filter>
+            </activity>
+        </application>
+
+    </manifest>
+
+
