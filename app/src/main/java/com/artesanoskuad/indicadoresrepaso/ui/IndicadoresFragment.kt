@@ -7,11 +7,17 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.artesanoskuad.indicadoresrepaso.data.IndicadoresRepository
-import com.artesanoskuad.indicadoresrepaso.data.model.Indicador
+import com.artesanoskuad.indicadoresrepaso.data.IndicadoresDataRepository
+import com.artesanoskuad.indicadoresrepaso.data.db.IndicadoresDao
+import com.artesanoskuad.indicadoresrepaso.data.db.IndicadoresDatabase
+import com.artesanoskuad.indicadoresrepaso.data.remote.IndicadoresApi
 import com.artesanoskuad.indicadoresrepaso.data.remote.RetrofitClient
 import com.artesanoskuad.indicadoresrepaso.databinding.FragmentIndicadoresBinding
+import com.artesanoskuad.indicadoresrepaso.domain.Indicadores
+import com.artesanoskuad.indicadoresrepaso.domain.IndicadoresRepository
+import com.artesanoskuad.indicadoresrepaso.domain.ObtenerIndicadoresUseCase
 import com.artesanoskuad.indicadoresrepaso.presentation.IndicadoresViewModel
 import com.artesanoskuad.indicadoresrepaso.presentation.IndicadoresViewModelFactory
 import com.artesanoskuad.indicadoresrepaso.presentation.IndicadoresViewState
@@ -24,12 +30,13 @@ class IndicadoresFragment : Fragment() {
     private var rawBinding: FragmentIndicadoresBinding? = null
     private val binding get() = rawBinding!!
 
-    private val indicadoresApi = RetrofitClient.crearApiIndicadores()
-    private val repository = IndicadoresRepository(indicadoresApi)
-    private val indicadoresViewModelFactory = IndicadoresViewModelFactory(repository)
-    private val indicadoresViewModel: IndicadoresViewModel by activityViewModels {
-        indicadoresViewModelFactory
-    }
+    private lateinit var indicadoresDao: IndicadoresDao
+    private lateinit var indicadoresApi: IndicadoresApi
+
+    lateinit var repository: IndicadoresRepository
+    lateinit var obtenerIndicadoresUseCase: ObtenerIndicadoresUseCase
+    lateinit var indicadoresViewModelFactory: IndicadoresViewModelFactory
+    lateinit var indicadoresViewModel: IndicadoresViewModel
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -41,8 +48,19 @@ class IndicadoresFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        initDependencies()
         setupRecyclerView()
         setupViewModel()
+    }
+
+    private fun initDependencies() {
+        indicadoresDao =
+            IndicadoresDatabase.getDatabase(requireActivity().applicationContext).indicadoresDao
+        indicadoresApi = RetrofitClient.crearApiIndicadores()
+        repository = IndicadoresDataRepository(indicadoresApi, indicadoresDao)
+        obtenerIndicadoresUseCase = ObtenerIndicadoresUseCase(repository)
+        indicadoresViewModelFactory = IndicadoresViewModelFactory(obtenerIndicadoresUseCase)
+        indicadoresViewModel = ViewModelProvider(this, indicadoresViewModelFactory)[IndicadoresViewModel::class.java]
     }
 
     private fun setupRecyclerView() {
@@ -53,25 +71,19 @@ class IndicadoresFragment : Fragment() {
         when (state) {
             is NoSeObtieneRespuestaViewState -> muestraVentanaSinRespuesta()
             is MostrarIndicadoresViewState -> muestraIndicadores(
-                state.author,
-                state.fecha,
-                state.version,
                 state.indicadores
             )
         }
     }
 
     private fun muestraIndicadores(
-        author: String,
-        fecha: String,
-        version: String,
-        indicadores: List<Indicador>
+        indicadores: Indicadores
     ) {
         with(binding) {
-            tvAuthor.text = author
-            tvFecha.text = fecha
-            tvVersion.text = version
-            rvIndicadores.adapter = IndicadoresAdapter(indicadores)
+            tvAuthor.text = indicadores.autor
+            tvFecha.text = indicadores.fecha
+            tvVersion.text = indicadores.version
+            rvIndicadores.adapter = IndicadoresAdapter(indicadores.indicadores)
         }
     }
 

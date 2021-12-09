@@ -3,8 +3,8 @@ package com.artesanoskuad.indicadoresrepaso.ui
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
-import com.artesanoskuad.indicadoresrepaso.data.model.Indicador
 import com.artesanoskuad.indicadoresrepaso.databinding.ItemIndicadoresBinding
+import com.artesanoskuad.indicadoresrepaso.domain.Indicador
 
 class IndicadoresAdapter(
     private val indicadores: List<Indicador>

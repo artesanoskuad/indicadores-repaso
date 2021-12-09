@@ -1,0 +1,169 @@
+Pasos para cargar una lista de información en un RecyclerView desde una API Rest
+
+* Agregar dependencias de Room en el archivo build.gradle del módulo :app
+    plugins {
+        ...
+        id 'kotlin-kapt'
+    }
+
+    dependencies {
+            ....
+            def roomVersion = "2.3.0"
+            implementation "androidx.room:room-common:$roomVersion"
+            implementation "androidx.room:room-ktx:$roomVersion"
+            kapt "androidx.room:room-compiler:$roomVersion"
+            ....
+    }
+* Crear la clase Entity para la creación de la tabla
+        @Entity
+        data class IndicadorEntity(
+            val codigo: String,
+            val nombre: String,
+            val unidadMedida: String,
+            var fecha: String,
+            val valor: String
+        )
+* Crear la interfaz Dao para las instrucciones de Insert, Truncate y Select
+        @Dao
+        interface IndicadoresDao {
+
+            @Insert
+            fun insert(indicadoresEntity: IndicadoresEntity)
+
+            @Query("DELETE FROM IndicadoresEntity")
+            fun deleteTable(): Int
+
+            @Query("SELECT * FROM IndicadoresEntity")
+            fun getAllRegistros(): IndicadoresEntity
+
+        }
+* Crear la clase IndicadoresRoomDatabase que herede de RoomDatabase
+@Database(
+    entities = [IndicadoresEntity::class],
+    version = 1,
+    exportSchema = false
+)
+abstract class IndicadoresDatabase : RoomDatabase() {
+
+    abstract val indicadoresDao: IndicadoresDao
+
+    companion object {
+
+        @Volatile
+        private var INSTANCE: IndicadoresDatabase? = null
+
+        fun getDatabase(context: Context): IndicadoresDatabase {
+            val tempInstance = INSTANCE
+            if (tempInstance != null) {
+                return tempInstance
+            }
+
+            synchronized(this) {
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    IndicadoresDatabase::class.java,
+                    "indicadores_database"
+                )
+                    .allowMainThreadQueries()
+                    .build()
+                INSTANCE = instance
+                return instance
+            }
+        }
+    }
+}
+* Agregar interfaz IndicadoresDao al Repositorio, dentro del constructor primario.
+    class IndicadoresRepository(
+        private val api: IndicadoresApi,
+        private val db: IndicadoresDao
+    )
+* Dentro de la carpeta "data", creamos la carpeta "mapper"
+* Dentro de la carpeta "mapper", creamos la clase Kotlin de tipo object, llamada "IndicadoresMapper"
+* Dentro de la clase IndicadoresMapper, creamos la función "remoteToLocal", recibiendo el parametro
+de tipo Indicadores (Retrofit) y retornando un objeto de tipo IndicadoresEntity (Room Local)
+* Dentro de la clase IndicadoresMapper, creamos la función "localToRemote", recibiendo el paremetro de tipo
+IndicadoresEntity (Room) y retornando un objeto de tipo Indicadores (Retrofit)
+object IndicadoresMapper {
+    fun remoteToLocal(indicadores: Indicadores): IndicadoresEntity {
+        with(indicadores) {
+            return IndicadoresEntity(
+                version,
+                autor,
+                fecha,
+                uf,
+                ivp,
+                dolar,
+                dolarIntercambio,
+                euro,
+                ipc,
+                utm,
+                imacec,
+                tpm,
+                libraCobre,
+                tasaDesempleo,
+                bitcoin
+            )
+        }
+    }
+
+    fun localToRemote(indicadoresEntity: IndicadoresEntity) : Indicadores{
+        with(indicadoresEntity) {
+            return Indicadores(
+                version,
+                autor,
+                fecha,
+                uf,
+                ivp,
+                dolar,
+                dolarIntercambio,
+                euro,
+                ipc,
+                utm,
+                imacec,
+                tpm,
+                libraCobre,
+                tasaDesempleo,
+                bitcoin
+            )
+        }
+    }
+}
+* Dentro de la clase IndicadoresRepository validaremos con un
+try catch, la llamada a la Api, esta llamada puede ser fallida y
+para estos casos, intentaremos obtener datos desde la base de datos
+local.
+Esto deberia ocurrir en 3 casos:
+1) La respuesta de la api no es Successful.
+2) El dispositivo no tenga internet
+3) El servidor este caido y no obtengamos una respuesta.
+
+-> Para intentar obtener la información de la tabla, debemos validar
+que esta tenga registros, en caso de que la tabla no tenga registros, debemos retornar un valor null
+    private fun getIndicadoresFromLocal(): Indicadores? {
+        val indicadoresLocal = db.getIndicadores()
+        return if (indicadoresLocal == null) {
+            null
+        } else {
+            IndicadoresMapper.localToRemote(indicadoresLocal)
+        }
+    }
+
+* En caso de que la respuesta del servidor sea exitosa, debemos
+guardar esa información en nuestra tabla de Room
+    suspend fun obtenerIndicadores(): Indicadores? {
+        return try {
+            val indicadores = api.obtenerIndicadores()
+            if (indicadores.isSuccessful) {
+                indicadores.body().also { body ->
+                    guardarDatosEnLocal(body)
+                }
+            } else {
+                getIndicadoresFromLocal()
+            }
+        } catch (e: UnknownHostException) {
+            getIndicadoresFromLocal()
+        } catch (e: Exception) {
+            getIndicadoresFromLocal()
+        }
+    }
+
